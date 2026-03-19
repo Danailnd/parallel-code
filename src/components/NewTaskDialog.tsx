@@ -212,16 +212,19 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
     setBranchPrefix(pid ? getProjectBranchPrefix(pid) : 'task');
   });
 
-  // Pre-check direct mode based on project setting
+  // Pre-check direct mode based on project setting, but override to false
+  // when a direct-mode task already exists for this project. Combined into a
+  // single effect so both conditions are evaluated atomically — avoids a
+  // reactivity race between separate effects.
   createEffect(() => {
     const pid = selectedProjectId();
     if (!pid) return;
+    if (hasDirectModeTask(pid)) {
+      setDirectMode(false);
+      return;
+    }
     const proj = getProject(pid);
     setDirectMode(proj?.defaultDirectMode ?? false);
-  });
-
-  createEffect(() => {
-    if (directModeDisabled()) setDirectMode(false);
   });
 
   // Auto-enable Docker when skip-permissions is turned on and Docker is available
