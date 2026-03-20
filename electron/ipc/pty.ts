@@ -172,6 +172,7 @@ export function spawnAgent(
     : null;
 
   if (args.dockerMode) {
+    const name = containerName as string;
     const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
     spawnCommand = 'docker';
     spawnArgs = [
@@ -180,7 +181,7 @@ export function spawnAgent(
       '-it',
       // Predictable name so we can stop the container on kill
       '--name',
-      containerName!,
+      name,
       // Label so we can identify all containers owned by this app
       '--label',
       'parallel-code=true',
