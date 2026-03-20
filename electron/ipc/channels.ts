@@ -88,6 +88,8 @@ export enum IPC {
 
   // Docker
   CheckDockerAvailable = 'check_docker_available',
+  CheckDockerImageExists = 'check_docker_image_exists',
+  BuildDockerImage = 'build_docker_image',
 
   // Notifications
   ShowNotification = 'show_notification',

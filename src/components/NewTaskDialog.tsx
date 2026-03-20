@@ -45,6 +45,10 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
   const [directMode, setDirectMode] = createSignal(false);
   const [skipPermissions, setSkipPermissions] = createSignal(false);
   const [dockerMode, setDockerMode] = createSignal(false);
+  const [dockerImageReady, setDockerImageReady] = createSignal<boolean | null>(null); // null = unknown
+  const [dockerBuilding, setDockerBuilding] = createSignal(false);
+  const [dockerBuildOutput, setDockerBuildOutput] = createSignal('');
+  const [dockerBuildError, setDockerBuildError] = createSignal('');
   const [branchPrefix, setBranchPrefix] = createSignal('');
   let promptRef!: HTMLTextAreaElement;
   let formRef!: HTMLFormElement;
@@ -221,6 +225,49 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
       setDockerMode(true);
     }
   });
+
+  // Check if the default Docker image exists when Docker mode is enabled
+  createEffect(() => {
+    if (dockerMode() && store.dockerAvailable) {
+      const image = store.dockerImage || 'parallel-code-agent:latest';
+      invoke<boolean>(IPC.CheckDockerImageExists, { image }).then(
+        (exists) => setDockerImageReady(exists),
+        () => setDockerImageReady(false),
+      );
+    } else {
+      setDockerImageReady(null);
+    }
+  });
+
+  async function handleBuildImage() {
+    setDockerBuilding(true);
+    setDockerBuildOutput('');
+    setDockerBuildError('');
+
+    const channelId = `docker-build-${Date.now()}`;
+
+    // Listen for build output
+    const cleanup = window.electron.ipcRenderer.on(`channel:${channelId}`, (...args: unknown[]) => {
+      setDockerBuildOutput((prev) => prev + String(args[0] ?? ''));
+    });
+
+    try {
+      const result = await invoke<{ ok: boolean; error?: string }>(IPC.BuildDockerImage, {
+        onOutputChannel: `channel:${channelId}`,
+      });
+      if (result.ok) {
+        setDockerImageReady(true);
+        setDockerBuildOutput((prev) => prev + '\nImage built successfully!');
+      } else {
+        setDockerBuildError(result.error || 'Build failed');
+      }
+    } catch (err) {
+      setDockerBuildError(String(err));
+    } finally {
+      setDockerBuilding(false);
+      if (cleanup) cleanup();
+    }
+  }
 
   const effectiveName = () => {
     const n = name().trim();
@@ -667,7 +714,7 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                   type="text"
                   value={store.dockerImage}
                   onInput={(e) => setDockerImage(e.currentTarget.value)}
-                  placeholder="ubuntu:latest"
+                  placeholder="parallel-code-agent:latest"
                   style={{
                     flex: '1',
                     background: theme.bgInput,
@@ -681,6 +728,70 @@ export function NewTaskDialog(props: NewTaskDialogProps) {
                   }}
                 />
               </div>
+              <Show when={dockerImageReady() === false && !dockerBuilding()}>
+                <div
+                  style={{
+                    display: 'flex',
+                    'align-items': 'center',
+                    gap: '8px',
+                    'font-size': '11px',
+                    color: theme.fgMuted,
+                  }}
+                >
+                  <span>Image not found locally.</span>
+                  <Show when={store.dockerImage === 'parallel-code-agent:latest' || !store.dockerImage}>
+                    <button
+                      type="button"
+                      onClick={handleBuildImage}
+                      style={{
+                        background: theme.accent,
+                        color: theme.accentText,
+                        border: 'none',
+                        'border-radius': '4px',
+                        padding: '3px 10px',
+                        'font-size': '11px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Build Image
+                    </button>
+                  </Show>
+                </div>
+              </Show>
+              <Show when={dockerBuilding()}>
+                <div style={{ 'font-size': '11px', color: theme.fgMuted, display: 'flex', 'align-items': 'center', gap: '6px' }}>
+                  <span class="inline-spinner" aria-hidden="true" />
+                  Building image... this may take a few minutes.
+                </div>
+                <Show when={dockerBuildOutput()}>
+                  <pre
+                    style={{
+                      'font-size': '10px',
+                      color: theme.fgSubtle,
+                      background: theme.bgInput,
+                      'border-radius': '4px',
+                      padding: '6px 8px',
+                      'max-height': '120px',
+                      'overflow-y': 'auto',
+                      'white-space': 'pre-wrap',
+                      'word-break': 'break-all',
+                      margin: '0',
+                    }}
+                  >
+                    {dockerBuildOutput()}
+                  </pre>
+                </Show>
+              </Show>
+              <Show when={dockerBuildError()}>
+                <div style={{ 'font-size': '11px', color: theme.error }}>
+                  Build failed: {dockerBuildError()}
+                </div>
+              </Show>
+              <Show when={dockerImageReady() === true && !dockerBuilding()}>
+                <div style={{ 'font-size': '11px', color: theme.success ?? theme.accent }}>
+                  Image ready.
+                </div>
+              </Show>
             </Show>
           </div>
         </Show>

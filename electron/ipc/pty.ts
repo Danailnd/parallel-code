@@ -1,6 +1,7 @@
 import * as pty from 'node-pty';
-import { execFileSync, execFile } from 'child_process';
+import { execFileSync, execFile, spawn as cpSpawn } from 'child_process';
 import fs from 'fs';
+import path from 'path';
 import type { BrowserWindow } from 'electron';
 import { RingBuffer } from '../remote/ring-buffer.js';
 
@@ -167,7 +168,7 @@ export function spawnAgent(
     : null;
 
   if (args.dockerMode) {
-    const image = args.dockerImage || 'ubuntu:latest';
+    const image = args.dockerImage || DOCKER_DEFAULT_IMAGE;
     spawnCommand = 'docker';
     spawnArgs = [
       'run',
@@ -535,4 +536,73 @@ export async function isDockerAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** The default image name for Docker-isolated tasks. */
+export const DOCKER_DEFAULT_IMAGE = 'parallel-code-agent:latest';
+
+/** Check if a Docker image exists locally. */
+export async function isDockerImageExists(image: string): Promise<boolean> {
+  try {
+    execFileSync('docker', ['image', 'inspect', image], {
+      encoding: 'utf8',
+      timeout: 5000,
+      stdio: 'pipe',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build the bundled Dockerfile into parallel-code-agent:latest.
+ * Streams build output to the renderer via an IPC channel so the user can see progress.
+ * Returns a promise that resolves on success, rejects on failure.
+ */
+export function buildDockerImage(
+  win: BrowserWindow,
+  onOutputChannel: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    // Locate the Dockerfile bundled with the app.
+    // In dev mode it's at <repo>/docker/Dockerfile
+    // In production it's in the app.asar resources directory
+    const devDockerDir = path.join(__dirname, '..', '..', 'docker');
+    const prodDockerDir = path.join(process.resourcesPath ?? '', 'docker');
+    const dockerDir = fs.existsSync(path.join(devDockerDir, 'Dockerfile'))
+      ? devDockerDir
+      : prodDockerDir;
+    const dockerfilePath = path.join(dockerDir, 'Dockerfile');
+
+    if (!fs.existsSync(dockerfilePath)) {
+      resolve({ ok: false, error: `Dockerfile not found at ${dockerfilePath}` });
+      return;
+    }
+
+    const send = (text: string) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(onOutputChannel, text);
+      }
+    };
+
+    const proc = cpSpawn('docker', ['build', '-t', DOCKER_DEFAULT_IMAGE, '-f', dockerfilePath, dockerDir], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    proc.stdout?.on('data', (chunk: Buffer) => send(chunk.toString('utf8')));
+    proc.stderr?.on('data', (chunk: Buffer) => send(chunk.toString('utf8')));
+
+    proc.on('error', (err) => {
+      resolve({ ok: false, error: err.message });
+    });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: `docker build exited with code ${code}` });
+      }
+    });
+  });
 }

@@ -13,6 +13,8 @@ import {
   killAllAgents,
   getAgentMeta,
   isDockerAvailable,
+  isDockerImageExists,
+  buildDockerImage,
 } from './pty.js';
 import { ensurePlansDirectory, startPlanWatcher, readPlanForWorktree } from './plans.js';
 import { startRemoteServer } from '../remote/server.js';
@@ -126,6 +128,14 @@ export function registerAllHandlers(win: BrowserWindow): void {
   // --- Agent commands ---
   ipcMain.handle(IPC.ListAgents, () => listAgents());
   ipcMain.handle(IPC.CheckDockerAvailable, () => isDockerAvailable());
+  ipcMain.handle(IPC.CheckDockerImageExists, (_e, args) => {
+    assertString(args.image, 'image');
+    return isDockerImageExists(args.image);
+  });
+  ipcMain.handle(IPC.BuildDockerImage, (_e, args) => {
+    assertString(args.onOutputChannel, 'onOutputChannel');
+    return buildDockerImage(win, args.onOutputChannel);
+  });
 
   // --- Task commands ---
   ipcMain.handle(IPC.CreateTask, (_e, args) => {

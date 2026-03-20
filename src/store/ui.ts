@@ -100,7 +100,7 @@ export function setEditorCommand(command: string): void {
 }
 
 export function setDockerImage(image: string): void {
-  setStore('dockerImage', image || 'ubuntu:latest');
+  setStore('dockerImage', image || 'parallel-code-agent:latest');
 }
 
 export function setDockerAvailable(available: boolean): void {
