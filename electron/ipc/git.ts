@@ -1,10 +1,14 @@
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, type ExecFileOptions } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 
-const exec = promisify(execFile);
+const _exec = promisify(execFile);
+// Pass HUSKY=0 so git hooks (which require bash at /usr/bin/env) don't run
+// when git is spawned from the Electron process on Windows.
+const exec = (file: string, args: string[], opts: ExecFileOptions = {}) =>
+  _exec(file, args, { env: { ...process.env, HUSKY: '0' }, ...opts });
 
 // --- Types ---
 
@@ -1060,6 +1064,7 @@ export function pushTask(
     const proc = spawn('git', ['push', '--progress', '-u', 'origin', '--', branchName], {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, HUSKY: '0' },
     });
 
     const send = (msg: string) => {
