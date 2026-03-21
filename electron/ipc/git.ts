@@ -1,4 +1,4 @@
-import { execFile, spawn, type ExecFileOptions } from 'child_process';
+import { execFile, spawn, type ExecFileOptionsWithStringEncoding } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
@@ -7,8 +7,16 @@ import type { BrowserWindow } from 'electron';
 const _exec = promisify(execFile);
 // Pass HUSKY=0 so git hooks (which require bash at /usr/bin/env) don't run
 // when git is spawned from the Electron process on Windows.
-const exec = (file: string, args: string[], opts: ExecFileOptions = {}) =>
-  _exec(file, args, { env: { ...process.env, HUSKY: '0' }, ...opts });
+const exec = (
+  file: string,
+  args: string[],
+  opts: Partial<ExecFileOptionsWithStringEncoding> = {},
+) =>
+  _exec(file, args, {
+    encoding: 'utf8',
+    env: { ...process.env, HUSKY: '0' },
+    ...opts,
+  } as ExecFileOptionsWithStringEncoding);
 
 // --- Types ---
 
